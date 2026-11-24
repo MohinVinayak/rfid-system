@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RFID Inventory</title>
+<style>
+  :root {
+    --bg: #090e1a;
+    --card: #111a2e;
+    --card-surface: #18243e;
+    --header-bg: #060913;
+    --cyan: #38bdf8;
+    --cyan-dim: rgba(56, 189, 248, 0.15);
+    --border: #223354;
+    --border-light: #2e4470;
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --green: #4ade80;
+    --red: #f87171;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    height: 100vh;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ────────────────────────────────────────── */
+  header {
+    background: var(--header-bg);
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  header h1 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: #ffffff;
+  }
+
+  .scan-btn {
+    position: relative;
+    background: #0284c7;
+    color: #ffffff;
+    padding: 6px 16px;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    transition: background 0.15s ease;
+  }
+
+  .scan-btn:hover { background: #0369a1; }
+
+  .scan-btn input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ── Main Two Column Grid (1-page fit) ─────────────── */
+  .container {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 560px 1fr;
+    gap: 14px;
+    padding: 14px 20px;
+    overflow: hidden;
+  }
+
+  @media (max-width: 1080px) {
+    .container {
+      grid-template-columns: 1fr;
+      overflow-y: auto;
+    }
+    html, body { overflow: auto; height: auto; }
+  }
+
+  .left-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;
+  }
+
+  .right-pane {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+  }
+
+  .card-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--cyan);
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* ── 1. Graph Box ──────────────────────────────────── */
+  .graph-card {
+    flex: 1;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .graph-container {
+    flex: 1;
+    position: relative;
+    background: #060a14;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .graph-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 20px;
+  }
+
+  /* ── 2. 5-Bit Resonator Mapping Strip ──────────────── */
+  .bits-card {
+    flex-shrink: 0;
+  }
+
+  .bits-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+
+  .bit-cell {
+    background: var(--card-surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 6px 4px;
+    text-align: center;
+    transition: all 0.2s ease;
+  }
+
+  .bit-cell.active {
+    border-color: var(--cyan);
+    background: var(--cyan-dim);
+  }
+
+  .bit-name {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .bit-val {
+    font-size: 1.35rem;
+    font-family: monospace;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
+  }
+
+  .bit-cell.active .bit-val {
+    color: var(--cyan);
+  }
+
+  .bit-notch {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── 3. Detected Item + INLINE Buttons ─────────────── */
+  .detected-card {
+    flex-shrink: 0;
+    border-left: 4px solid var(--cyan);
+    background: var(--card);
+  }
+
+  .detected-layout {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .detected-info h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .detected-info p {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .stock-pill {
+    text-align: right;
+    background: var(--card-surface);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: 5px;
+  }
+
+  .stock-pill small {
+    display: block;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .stock-pill strong {
+    font-size: 1.5rem;
+    font-family: monospace;
+    color: var(--cyan);
+    line-height: 1;
+  }
+
+  /* INLINE ACTION BUTTONS BELOW DETECTION */
+  .action-row {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+  }
+
+  .btn-add {
+    background: #0284c7;
+    color: #ffffff;
+  }
+
+  .btn-add:hover { background: #0369a1; }
+
+  .btn-remove {
+    background: var(--card-surface);
+    color: var(--text);
+    border-color: var(--border);
+  }
+
+  .btn-remove:hover { background: #223356; }
+
+  /* ── Right Column: Inventory Table ─────────────────── */
+  .table-scroll {
+    flex: 1;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #070c18;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    text-align: left;
+  }
+
+  th {
+    background: #050810;
+    color: var(--text-muted);
+    padding: 8px 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-bottom: 1px solid var(--border);
+  }
+
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #142036;
+    color: #cbd5e1;
+  }
+
+  tbody tr:nth-child(even) { background: #0a1122; }
+  tbody tr:hover { background: #162442; color: #ffffff; }
+
+  .code-cell {
+    font-family: monospace;
+    font-weight: 600;
+    color: var(--cyan);
+  }
+
+  #errorMsg {
+    color: var(--red);
+    font-size: 0.8rem;
+    padding: 6px 0;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RFID Inventory</h1>
+  <label class="scan-btn">
+    Scan / Upload CST File
+    <input type="file" id="fileInput" accept=".txt,.csv" onchange="handleUpload(event)">
+  </label>
+</header>
+
+<div class="container">
+
+  <!-- LEFT COLUMN: Graph, 5-Bit Decomposition, Detected Item + Inline Buttons -->
+  <div class="left-pane">
+
+    <!-- 1. Spectrum Graph of CST File -->
+    <div class="card graph-card">
+      <div class="card-title">
+        <span>Resonance Spectrum (RCS vs Frequency)</span>
+        <span id="graphLabel" style="color:var(--text-muted); font-size:0.7rem; font-family:monospace;">3.1 – 10.0 GHz</span>
+      </div>
+      <div class="graph-container">
+        <canvas id="spectrumCanvas"></canvas>
+        <div class="graph-placeholder" id="graphPlaceholder">
+          Upload a CST .txt file to view resonance dips &amp; bit mapping
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Bit Mapping Grid (b4 -> b0) -->
+    <div class="card bits-card">
+      <div class="card-title">5-Bit Resonator Decoding</div>
+      <div class="bits-grid" id="bitsGrid">
+        <div class="bit-cell" id="cell-b4"><div class="bit-name">b4 (3.6G)</div><div class="bit-val">-</div><div class="bit-notch">—</div></div>
+        <div class="bit-cell" id="cell-b3"><div class="bit-name">b3 (4.7G)</div><div class="bit-val">-</div><div class="bit-notch">—</div></div>
+        <div class="bit-cell" id="cell-b2"><div class="bit-name">b2 (5.8G)</div><div class="bit-val">-</div><div class="bit-notch">—</div></div>
+        <div class="bit-cell" id="cell-b1"><div class="bit-name">b1 (6.8G)</div><div class="bit-val">-</div><div class="bit-notch">—</div></div>
+        <div class="bit-cell" id="cell-b0"><div class="bit-name">b0 (7/9G)</div><div class="bit-val">-</div><div class="bit-notch">—</div></div>
+      </div>
+    </div>
+
+    <!-- 3. Detected Item + INLINE Add/Remove Buttons Below -->
+    <div class="card detected-card" id="detectedBox">
+      <div class="card-title">Item Detected</div>
+      <div class="detected-layout">
+        <div class="detected-info">
+          <h2 id="itemName">Sticky Notes (Large)</h2>
+          <p id="itemSub">Tag Code: 01011 | Location: Shelf C2 | Category: Paper</p>
+        </div>
+        <div class="stock-pill">
+          <small>Stock</small>
+          <strong id="qtyDisplay">50</strong>
+        </div>
+      </div>
+
+      <!-- INLINE BUTTONS (NO POPUP) -->
+      <div class="action-row">
+        <button class="btn btn-add" onclick="updateStock(1)">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          Add 1 Item
+        </button>
+        <button class="btn btn-remove" onclick="updateStock(-1)">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4"/></svg>
+          Remove 1 Item
+        </button>
+      </div>
+    </div>
+
+    <div id="errorMsg"></div>
+
+  </div>
+
+  <!-- RIGHT COLUMN: Full Inventory Catalog (Auto fills height) -->
+  <div class="card right-pane">
+    <div class="card-title">Inventory Catalog (32 Items)</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:75px;">Tag</th>
+            <th>Item Name</th>
+            <th style="width:110px;">Category</th>
+            <th style="width:80px;">Location</th>
+            <th style="width:65px;">Stock</th>
+          </tr>
+        </thead>
+        <tbody id="invBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let currentCode = "01011";
+
+// ── Initial Data Load ─────────────────────────────────────────────────────────
+fetch('/api/inventory')
+  .then(r => r.json())
+  .then(d => renderInvTable(d.inventory))
+  .catch(err => console.error(err));
+
+// ── Upload Handler ────────────────────────────────────────────────────────────
+function handleUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  hideError();
+
+  const reader = new FileReader();
+  reader.onload = evt => {
+    fetch('/api/decode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: evt.target.result
+    })
+    .then(r => r.json())
+    .then(resp => {
+      if (resp.success) {
+        renderDecoded(resp.data);
+      } else {
+        showError(resp.error);
+      }
+    })
+    .catch(err => showError(err.message));
+  };
+  reader.readAsText(file);
+}
+
+// ── Render Decoded Output ─────────────────────────────────────────────────────
+function renderDecoded(data) {
+  currentCode = data.code;
+  const item = data.item;
+
+  // 1. Update Detected Card
+  document.getElementById('itemName').textContent = item.name;
+  document.getElementById('itemSub').textContent  = `Tag Code: ${data.code} | Location: ${item.zone} | Category: ${item.cat}`;
+  document.getElementById('qtyDisplay').textContent = data.qty;
+
+  // 2. Update Bit Cells
+  const bitNames = ['b4', 'b3', 'b2', 'b1', 'b0'];
+  data.band_results.forEach((b, idx) => {
+    const cell = document.getElementById(`cell-${bitNames[idx]}`);
+    const is1 = b.bit === '1';
+    cell.classList.toggle('active', is1);
+    cell.querySelector('.bit-val').textContent = b.bit;
+    cell.querySelector('.bit-notch').textContent = b.dip ? `${b.dip.f.toFixed(2)} GHz` : 'Flat';
+  });
+
+  // 3. Draw Resonance Spectrum Graph
+  if (data.spectrum) {
+    drawSpectrum(data.spectrum.freqs, data.spectrum.rcs, data.band_results);
+  }
+
+  refreshInvTable();
+}
+
+// ── Graph Drawing (Canvas) ───────────────────────────────────────────────────
+function drawSpectrum(freqs, rcs, bandResults) {
+  const canvas = document.getElementById('spectrumCanvas');
+  const ph = document.getElementById('graphPlaceholder');
+  ph.style.display = 'none';
+
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * window.devicePixelRatio;
+  canvas.height = rect.height * window.devicePixelRatio;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+  const w = rect.width;
+  const h = rect.height;
+  const pad = { top: 15, right: 15, bottom: 25, left: 35 };
+  const gw = w - pad.left - pad.right;
+  const gh = h - pad.top - pad.bottom;
+
+  const minF = Math.min(...freqs);
+  const maxF = Math.max(...freqs);
+  const minR = Math.min(...rcs) - 2;
+  const maxR = Math.max(...rcs) + 2;
+
+  const getX = f => pad.left + ((f - minF) / (maxF - minF)) * gw;
+  const getY = r => pad.top + gh - ((r - minR) / (maxR - minR)) * gh;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Background Grid Lines
+  ctx.strokeStyle = '#142036';
+  ctx.lineWidth = 1;
+  for (let f = Math.ceil(minF); f <= Math.floor(maxF); f += 1) {
+    const x = getX(f);
+    ctx.beginPath();
+    ctx.moveTo(x, pad.top);
+    ctx.lineTo(x, pad.top + gh);
+    ctx.stroke();
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${f}G`, x, h - 8);
+  }
+
+  // Draw RCS Spectrum Curve
+  ctx.beginPath();
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 2;
+  freqs.forEach((f, i) => {
+    const x = getX(f);
+    const y = getY(rcs[i]);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Highlight Detected Resonance Notches with dots & markers
+  if (bandResults) {
+    bandResults.forEach(br => {
+      if (br.dip) {
+        const x = getX(br.dip.f);
+        const y = getY(br.dip.rcs);
+
+        // Vertical drop line to notch
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x, pad.top);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Notch dot
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Label
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(br.band.name, x, y - 8);
+      }
+    });
+  }
+}
+
+// ── Inline Add/Remove Quantity (NO POPUP) ────────────────────────────────────
+function updateStock(delta) {
+  if (!currentCode) return;
+
+  fetch('/api/qty', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: currentCode, delta: delta })
+  })
+  .then(r => r.json())
+  .then(resp => {
+    if (resp.success) {
+      document.getElementById('qtyDisplay').textContent = resp.qty;
+      refreshInvTable();
+    } else {
+      showError(resp.error);
+    }
+  })
+  .catch(err => showError(err.message));
+}
+
+// ── Refresh Inventory Table ──────────────────────────────────────────────────
+function refreshInvTable() {
+  fetch('/api/inventory')
+    .then(r => r.json())
+    .then(d => renderInvTable(d.inventory));
+}
+
+function renderInvTable(inventory) {
+  const tbody = document.getElementById('invBody');
+  tbody.innerHTML = '';
+  inventory.forEach(it => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="code-cell">${it.code}</td>
+      <td><strong>${it.name}</strong></td>
+      <td style="color:var(--text-muted);">${it.cat}</td>
+      <td style="color:var(--text-muted);">${it.zone}</td>
+      <td style="font-weight:700; font-family:monospace; color:${it.qty === 0 ? '#f87171' : '#38bdf8'};">${it.qty}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function hideError() {
+  document.getElementById('errorMsg').style.display = 'none';
+}
+</script>
+</body>
+</html>
